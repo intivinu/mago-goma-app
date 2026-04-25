@@ -139,17 +139,22 @@ export default function GamePage() {
       return;
     }
 
-    const action = authMode === 'login' ? login : register;
-    const res = await action(username, password);
-    
-    if (res.success) {
-      const u = await getUser();
-      setUser(u);
-      setScreen('menu');
-    } else {
-      setAuthError(res.error || 'Error de autenticación');
+    try {
+      const action = authMode === 'login' ? login : register;
+      const res = await action(username, password);
+      
+      if (res.success) {
+        const u = await getUser();
+        setUser(u);
+        setScreen('menu');
+      } else {
+        setAuthError(res.error || 'Error de autenticación');
+      }
+    } catch (err: any) {
+      setAuthError('Error de conexión con el servidor (Vercel). Revisa tus variables de entorno.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleLogout = async () => {
