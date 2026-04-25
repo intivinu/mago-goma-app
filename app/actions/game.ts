@@ -61,22 +61,18 @@ export async function getWizardResponse(
   // filtraremos por las que EMPIEZAN con las letras de la sílaba (LIKE 'sílaba%')
   // y luego validaremos en JS.
   
+  const levelFilter = difficulty === 'aprendiz' 
+    ? { in: [1] } 
+    : difficulty === 'sabio' 
+      ? { in: [1, 2] } 
+      : undefined;
+
   const potentialMatches = await prisma.word.findMany({
     where: {
-      text: {
-        startsWith: lastSyllable
-      },
-      NOT: {
-        text: {
-          in: playedWords
-        }
-      }
+      text: { startsWith: lastSyllable },
+      NOT: { text: { in: playedWords } },
+      ...(levelFilter ? { level: levelFilter } : {})
     },
-    orderBy: difficulty === 'aprendiz' 
-      ? { level: 'asc' } 
-      : difficulty === 'supremo' 
-        ? { level: 'desc' } 
-        : undefined,
     take: 150 
   });
 
