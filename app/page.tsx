@@ -78,6 +78,8 @@ export default function GamePage() {
   const [adminUsers, setAdminUsers] = useState<{id: number, username: string, score: number, createdAt: Date, _count: { suggestions: number }}[]>([]);
   const [adminSuggestions, setAdminSuggestions] = useState<{id: number, text: string, user: { username: string }}[]>([]);
   const [adminQuery, setAdminQuery] = useState('');
+  const [adminFilterLevel, setAdminFilterLevel] = useState<number>(0);
+  const [adminMatchType, setAdminMatchType] = useState<'contains' | 'startsWith' | 'endsWith'>('contains');
   const [adminResults, setAdminResults] = useState<{id: number, text: string, level: number}[]>([]);
   const [adminAddWord, setAdminAddWord] = useState('');
   const [adminMessage, setAdminMessage] = useState('');
@@ -639,22 +641,65 @@ export default function GamePage() {
                 </button>
               </div>
 
-              <input 
-                type="text" 
-                placeholder="🔍 Buscar palabra..." 
-                value={adminQuery}
-                onChange={async (e) => {
-                  setAdminQuery(e.target.value);
-                  if (e.target.value.length > 1) {
-                    const results = await searchWords(e.target.value);
-                    setAdminResults(results);
-                  } else {
-                    setAdminResults([]);
-                  }
-                }}
-                className="game-input" 
-                style={{ fontSize: '0.9rem', padding: '0.5rem', marginTop: '0.5rem' }} 
-              />
+              <div className="flex-between" style={{ width: '100%', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                <input 
+                  type="text" 
+                  placeholder="🔍 Buscar palabra..." 
+                  value={adminQuery}
+                  onChange={async (e) => {
+                    setAdminQuery(e.target.value);
+                    if (e.target.value.length > 1 || adminFilterLevel > 0) {
+                      const results = await searchWords(e.target.value, adminFilterLevel, adminMatchType);
+                      setAdminResults(results);
+                    } else {
+                      setAdminResults([]);
+                    }
+                  }}
+                  className="game-input" 
+                  style={{ fontSize: '0.9rem', padding: '0.5rem', flex: '1 1 100%' }} 
+                />
+                
+                <div className="flex-between" style={{ gap: '0.5rem', width: '100%' }}>
+                  <select 
+                    value={adminMatchType}
+                    onChange={async (e) => {
+                      const newType = e.target.value as 'contains' | 'startsWith' | 'endsWith';
+                      setAdminMatchType(newType);
+                      if (adminQuery.length > 1 || adminFilterLevel > 0) {
+                        const results = await searchWords(adminQuery, adminFilterLevel, newType);
+                        setAdminResults(results);
+                      }
+                    }}
+                    className="game-input"
+                    style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }}
+                  >
+                    <option value="contains">Contiene</option>
+                    <option value="startsWith">Empieza con</option>
+                    <option value="endsWith">Termina con</option>
+                  </select>
+
+                  <select 
+                    value={adminFilterLevel}
+                    onChange={async (e) => {
+                      const newLevel = parseInt(e.target.value);
+                      setAdminFilterLevel(newLevel);
+                      if (adminQuery.length > 1 || newLevel > 0) {
+                        const results = await searchWords(adminQuery, newLevel, adminMatchType);
+                        setAdminResults(results);
+                      } else {
+                        setAdminResults([]);
+                      }
+                    }}
+                    className="game-input"
+                    style={{ padding: '0.5rem', fontSize: '0.85rem', flex: 1 }}
+                  >
+                    <option value={0}>Todos los Lvl</option>
+                    <option value={1}>Lvl 1 (Fácil)</option>
+                    <option value={2}>Lvl 2 (Medio)</option>
+                    <option value={3}>Lvl 3 (Difícil)</option>
+                  </select>
+                </div>
+              </div>
 
               <div style={{ width: '100%', maxHeight: '200px', overflowY: 'auto', background: 'rgba(0,0,0,0.3)', borderRadius: '0.5rem', padding: '0.5rem' }}>
                 {adminResults.map(w => (

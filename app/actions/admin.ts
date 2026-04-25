@@ -11,13 +11,25 @@ async function verifyAdmin() {
   }
 }
 
-export async function searchWords(query: string) {
+export async function searchWords(query: string, level: number = 0, matchType: 'contains' | 'startsWith' | 'endsWith' = 'contains') {
   await verifyAdmin()
-  if (!query.trim()) return []
+  if (!query.trim() && level === 0) return []
   
+  const where: any = {}
+  if (query.trim()) {
+    if (matchType === 'startsWith') {
+      where.text = { startsWith: query.toLowerCase() }
+    } else if (matchType === 'endsWith') {
+      where.text = { endsWith: query.toLowerCase() }
+    } else {
+      where.text = { contains: query.toLowerCase() }
+    }
+  }
+  if (level > 0) where.level = level
+
   const words = await prisma.word.findMany({
-    where: { text: { contains: query.toLowerCase() } },
-    take: 50,
+    where,
+    take: 100,
     orderBy: { text: 'asc' },
     select: { id: true, text: true, level: true }
   })
