@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/session'
+import bcrypt from 'bcryptjs'
 
 async function verifyAdmin() {
   const session = await getSession()
@@ -143,5 +144,16 @@ export async function resolveSuggestion(id: number, approve: boolean) {
     data: { status: approve ? 'approved' : 'rejected' }
   })
 
+  return { success: true }
+}
+
+export async function resetUserPassword(userId: number, newPassword: string) {
+  await verifyAdmin()
+  if (!newPassword || newPassword.length < 4) return { success: false, error: 'Mínimo 4 caracteres' }
+  const hashedPassword = await bcrypt.hash(newPassword, 10)
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashedPassword }
+  })
   return { success: true }
 }

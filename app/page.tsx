@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { submitWord, getWizardResponse } from './actions/game';
-import { register, login, logout, getUser, saveHighScore } from './actions/auth';
-import { searchWords, deleteWord, addWordsBulk, getStats, getUsers, getPendingSuggestions, resolveSuggestion, updateWordLevel } from './actions/admin';
+import { register, login, logout, getUser, saveHighScore, changeMyPassword } from './actions/auth';
+import { searchWords, deleteWord, addWordsBulk, getStats, getUsers, getPendingSuggestions, resolveSuggestion, updateWordLevel, resetUserPassword } from './actions/admin';
 import { suggestWord, getWeeklyLeaderboard } from './actions/community';
-import { Heart, Trophy, RotateCcw, AlertCircle, HelpCircle, User as UserIcon, LogOut, Users, Book, MessageSquare, Check, X, Sparkles } from 'lucide-react';
+import { Heart, Trophy, RotateCcw, AlertCircle, HelpCircle, User as UserIcon, LogOut, Users, Book, MessageSquare, Check, X, Sparkles, Key } from 'lucide-react';
 import { getRequiredNextSyllable } from '@/lib/game';
 
 type GameMode = 'classic' | 'sudden';
@@ -67,6 +67,10 @@ export default function GamePage() {
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggestInput, setSuggestInput] = useState('');
   const [suggestMessage, setSuggestMessage] = useState('');
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
 
   // Admin state
   const [adminTab, setAdminTab] = useState<'diccionario' | 'usuarios' | 'sugerencias'>('diccionario');
@@ -77,6 +81,8 @@ export default function GamePage() {
   const [adminResults, setAdminResults] = useState<{id: number, text: string, level: number}[]>([]);
   const [adminAddWord, setAdminAddWord] = useState('');
   const [adminMessage, setAdminMessage] = useState('');
+  const [resetUser, setResetUser] = useState<{id: number, username: string} | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
 
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -382,9 +388,14 @@ export default function GamePage() {
               <UserIcon size={20} />
               {user.username}
             </div>
-            <button onClick={handleLogout} className="text-muted" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-              <LogOut size={20} />
-            </button>
+            <div className="flex-center gap-2">
+              <button onClick={() => { setPasswordMessage(''); setShowChangePasswordModal(true); }} className="text-muted" style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Cambiar Contraseña">
+                <Key size={18} />
+              </button>
+              <button onClick={handleLogout} className="text-muted" style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Cerrar Sesión">
+                <LogOut size={20} />
+              </button>
+            </div>
           </div>
 
           <div className="magician-emoji animate-float">🧙‍♂️</div>
@@ -505,6 +516,55 @@ export default function GamePage() {
                 disabled={isLoading || !suggestInput}
               >
                 Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChangePasswordModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="glass-panel flex-col gap-4 animate-slide-up" style={{ width: '100%', maxWidth: '400px' }}>
+            <h2 className="text-accent font-bold text-center">Cambiar Contraseña</h2>
+            
+            <input 
+              type="password" 
+              value={currentPassword} 
+              onChange={e => setCurrentPassword(e.target.value)} 
+              placeholder="Contraseña Actual" 
+              className="game-input"
+              disabled={isLoading}
+            />
+            <input 
+              type="password" 
+              value={newPassword} 
+              onChange={e => setNewPassword(e.target.value)} 
+              placeholder="Nueva Contraseña (min. 4)" 
+              className="game-input"
+              disabled={isLoading}
+            />
+            {passwordMessage && <p className={passwordMessage.includes('éxito') ? "text-success text-center font-bold" : "text-error text-center font-bold"} style={{ fontSize: '0.9rem' }}>{passwordMessage}</p>}
+            
+            <div className="flex-between gap-2 mt-2">
+              <button onClick={() => { setShowChangePasswordModal(false); setCurrentPassword(''); setNewPassword(''); setPasswordMessage(''); }} className="btn" style={{ flex: 1, background: 'rgba(255,255,255,0.1)' }}>Cancelar</button>
+              <button 
+                onClick={async () => {
+                  setIsLoading(true);
+                  const res = await changeMyPassword(currentPassword, newPassword);
+                  if (res.success) {
+                    setPasswordMessage('¡Contraseña cambiada con éxito!');
+                    setCurrentPassword('');
+                    setNewPassword('');
+                  } else {
+                    setPasswordMessage(res.error || 'Error al cambiar');
+                  }
+                  setIsLoading(false);
+                }} 
+                className="btn btn-primary" 
+                style={{ flex: 1 }}
+                disabled={isLoading || !currentPassword || newPassword.length < 4}
+              >
+                Cambiar
               </button>
             </div>
           </div>
@@ -680,10 +740,57 @@ export default function GamePage() {
                       <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>{u.username}</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--success)' }}>{u.score}</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>{u._count.suggestions}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <button 
+                          onClick={() => setResetUser({id: u.id, username: u.username})}
+                          style={{ background: 'var(--accent)', border: 'none', color: '#fff', padding: '0.2rem 0.4rem', borderRadius: '0.25rem', cursor: 'pointer' }}
+                          title="Restablecer Contraseña"
+                        >
+                          <Key size={14} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {resetUser && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                  <div className="glass-panel flex-col gap-4 animate-slide-up" style={{ width: '100%', maxWidth: '300px' }}>
+                    <h3 className="text-accent text-center" style={{ fontSize: '1.2rem', fontWeight: 800 }}>Reset Contraseña</h3>
+                    <p className="text-muted text-center" style={{ fontSize: '0.9rem' }}>Nueva contraseña para <b>{resetUser.username}</b>:</p>
+                    <input 
+                      type="password" 
+                      value={resetPassword}
+                      onChange={e => setResetPassword(e.target.value)}
+                      placeholder="Mínimo 4 letras..."
+                      className="game-input"
+                    />
+                    <div className="flex-between gap-2 mt-2">
+                      <button onClick={() => { setResetUser(null); setResetPassword(''); }} className="btn" style={{ flex: 1, background: 'rgba(255,255,255,0.1)' }}>Cancelar</button>
+                      <button 
+                        onClick={async () => {
+                          if (resetPassword.length < 4) return alert('Mínimo 4 caracteres');
+                          setIsLoading(true);
+                          const res = await resetUserPassword(resetUser.id, resetPassword);
+                          if (res.success) {
+                            alert('Contraseña restablecida con éxito');
+                            setResetUser(null);
+                            setResetPassword('');
+                          } else {
+                            alert(res.error || 'Error al restablecer');
+                          }
+                          setIsLoading(false);
+                        }} 
+                        className="btn btn-primary" 
+                        style={{ flex: 1 }}
+                        disabled={isLoading || resetPassword.length < 4}
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : adminTab === 'sugerencias' ? (
             <div style={{ width: '100%', maxHeight: '300px', overflowY: 'auto', background: 'rgba(0,0,0,0.3)', borderRadius: '0.5rem', padding: '0.5rem' }}>

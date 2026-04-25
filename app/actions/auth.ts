@@ -86,7 +86,6 @@ export async function saveHighScore(newScore: number, wordsPlayedArray: string[]
     return { success: true, newRecord: true }
   }
 
-  // Create a game session record anyway
   await prisma.gameSession.create({
     data: {
       user: { connect: { id: session.userId } },
@@ -97,4 +96,25 @@ export async function saveHighScore(newScore: number, wordsPlayedArray: string[]
   })
   
   return { success: true, newRecord: false }
+}
+
+export async function changeMyPassword(currentPass: string, newPass: string) {
+  const session = await getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  if (!newPass || newPass.length < 4) return { success: false, error: 'Mínimo 4 caracteres' }
+
+  const user = await prisma.user.findUnique({ where: { id: session.userId } })
+  if (!user) return { success: false, error: 'Usuario no encontrado' }
+
+  const valid = await bcrypt.compare(currentPass, user.password)
+  if (!valid) return { success: false, error: 'Contraseña actual incorrecta' }
+
+  const hashedPassword = await bcrypt.hash(newPass, 10)
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { password: hashedPassword }
+  })
+
+  return { success: true }
 }

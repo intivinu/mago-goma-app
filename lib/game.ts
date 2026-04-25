@@ -37,7 +37,12 @@ export function getRequiredNextSyllable(currentWord: string): string {
 }
 
 export function removeAccents(str: string): string {
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return str
+    .replace(/[áäâà]/g, 'a')
+    .replace(/[éëêè]/g, 'e')
+    .replace(/[íïîì]/g, 'i')
+    .replace(/[óöôò]/g, 'o')
+    .replace(/[úüûù]/g, 'u');
 }
 
 export function validateChain(prevWord: string, nextWord: string): { valid: boolean; reason?: string } {
