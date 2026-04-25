@@ -1,0 +1,47 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Word {
+  id      Int    @id @default(autoincrement())
+  text    String @unique
+  isValid Boolean @default(true)
+  level   Int    @default(1)
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  score     Int      @default(0)
+  createdAt DateTime @default(now())
+  sessions  GameSession[]
+  suggestions SuggestedWord[]
+}
+
+model GameSession {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  score     Int      @default(0)
+  difficulty String   @default("aprendiz")
+  wordsPlayed String // JSON stringified array of words
+  createdAt DateTime @default(now())
+}
+
+model SuggestedWord {
+  id        Int      @id @default(autoincrement())
+  text      String
+  status    String   @default("pending") // pending, approved, rejected
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
