@@ -1,3 +1,4 @@
+// @ts-ignore
 import { getSyllables } from 'silabajs';
 
 export function getWordSyllables(word: string) {
