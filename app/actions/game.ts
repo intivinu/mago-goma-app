@@ -65,7 +65,7 @@ export async function getWizardResponse(
     ? { in: [1] } 
     : difficulty === 'sabio' 
       ? { in: [1, 2] } 
-      : undefined;
+      : { in: [1, 2, 3] };
 
   const potentialMatches = await prisma.word.findMany({
     where: {

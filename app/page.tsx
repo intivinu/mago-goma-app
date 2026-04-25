@@ -697,6 +697,7 @@ export default function GamePage() {
                     <option value={1}>Lvl 1 (Fácil)</option>
                     <option value={2}>Lvl 2 (Medio)</option>
                     <option value={3}>Lvl 3 (Difícil)</option>
+                    <option value={4}>Lvl 4 (Solo Jugador)</option>
                   </select>
                 </div>
               </div>
@@ -718,6 +719,7 @@ export default function GamePage() {
                         <option value={1}>Lvl 1 (Fácil)</option>
                         <option value={2}>Lvl 2 (Medio)</option>
                         <option value={3}>Lvl 3 (Difícil)</option>
+                        <option value={4}>Lvl 4 (Solo Jugador)</option>
                       </select>
                       <button 
                         onClick={async () => {
