@@ -132,7 +132,7 @@ export default function GamePage() {
     if (screen === 'multiplayer' && matchId && multiPolling) {
       interval = setInterval(async () => {
         const stateRes = await getMatchState(matchId);
-        if (stateRes.success) {
+        if (stateRes.success && stateRes.match) {
           setMatchState(stateRes.match);
           
           if (stateRes.match.status === 'playing') {
@@ -246,7 +246,7 @@ export default function GamePage() {
   const initMultiplayer = async () => {
     setIsLoading(true);
     const res = await findMatch();
-    if (res.success) {
+    if (res.success && res.matchId) {
       setMatchId(res.matchId);
       setMatchState(null);
       setError('');
