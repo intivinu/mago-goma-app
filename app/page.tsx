@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { submitWord, getWizardResponse } from './actions/game';
-import { register, login, logout, getUser, saveHighScore, changeMyPassword } from './actions/auth';
+import { findMatch, getMatchState, playMatchWord, leaveMatch, checkTimeout } from './actions/multiplayer';
+import { register, login, logout, getUser, saveHighScore, changeMyPassword, getMyStats } from './actions/auth';
 import { searchWords, deleteWord, addWordsBulk, getStats, getUsers, getPendingSuggestions, resolveSuggestion, updateWordLevel, resetUserPassword } from './actions/admin';
 import { suggestWord, getWeeklyLeaderboard } from './actions/community';
 import { Heart, Trophy, RotateCcw, AlertCircle, HelpCircle, User as UserIcon, LogOut, Users, Book, MessageSquare, Check, X, Sparkles, Key } from 'lucide-react';
@@ -10,12 +11,16 @@ import { getRequiredNextSyllable } from '@/lib/game';
 
 type GameMode = 'classic' | 'sudden';
 type Difficulty = 'aprendiz' | 'sabio' | 'supremo';
-type Screen = 'auth' | 'menu' | 'how' | 'game' | 'over' | 'admin';
+type Screen = 'auth' | 'menu' | 'how' | 'game' | 'over' | 'admin' | 'multiplayer';
 
 interface UserData {
   id: number;
   username: string;
   score: number;
+  pvpWins: number;
+  pvpLosses: number;
+  rankScore: number;
+  _count: { sessions: number };
 }
 
 export default function GamePage() {
@@ -72,6 +77,10 @@ export default function GamePage() {
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
 
+  // Stats state
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [matchHistory, setMatchHistory] = useState<any[]>([]);
+
   // Admin state
   const [adminTab, setAdminTab] = useState<'diccionario' | 'usuarios' | 'sugerencias'>('diccionario');
   const [adminTotalWords, setAdminTotalWords] = useState(0);
@@ -85,6 +94,12 @@ export default function GamePage() {
   const [adminMessage, setAdminMessage] = useState('');
   const [resetUser, setResetUser] = useState<{id: number, username: string} | null>(null);
   const [resetPassword, setResetPassword] = useState('');
+
+  // Multiplayer state
+  const [matchId, setMatchId] = useState<string | null>(null);
+  const [matchState, setMatchState] = useState<any>(null);
+  const [multiPolling, setMultiPolling] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,6 +125,41 @@ export default function GamePage() {
       getPendingSuggestions().then(s => setAdminSuggestions(s));
     }
   }, [screen, user?.username]);
+
+  // Multiplayer polling
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (screen === 'multiplayer' && matchId && multiPolling) {
+      interval = setInterval(async () => {
+        const stateRes = await getMatchState(matchId);
+        if (stateRes.success) {
+          setMatchState(stateRes.match);
+          
+          if (stateRes.match.status === 'playing') {
+             await checkTimeout(matchId);
+          }
+
+          if (stateRes.match.status === 'finished' || stateRes.match.status === 'abandoned') {
+            setMultiPolling(false);
+            if (user) {
+               // Update local score if we won
+               if (stateRes.match.winnerId === user.id) {
+                 getUser().then(u => { if (u) setUser(u); });
+               }
+            }
+          }
+        }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [screen, matchId, multiPolling, user]);
+
+  useEffect(() => {
+    if (screen === 'multiplayer' && matchState?.status === 'playing') {
+      const id = setInterval(() => setNow(Date.now()), 100);
+      return () => clearInterval(id);
+    }
+  }, [screen, matchState?.status]);
 
   // Timer logic
   useEffect(() => {
@@ -191,6 +241,22 @@ export default function GamePage() {
     setNewRecord(false);
     setScreen('game');
     startTimer(20);
+  };
+
+  const initMultiplayer = async () => {
+    setIsLoading(true);
+    const res = await findMatch();
+    if (res.success) {
+      setMatchId(res.matchId);
+      setMatchState(null);
+      setError('');
+      setCurrentInput('');
+      setScreen('multiplayer');
+      setMultiPolling(true);
+    } else {
+      alert(res.error);
+    }
+    setIsLoading(false);
   };
 
   const startTimer = (seconds: number) => {
@@ -391,6 +457,15 @@ export default function GamePage() {
               {user.username}
             </div>
             <div className="flex-center gap-2">
+              <button onClick={async () => { 
+                setIsLoading(true);
+                const mh = await getMyStats();
+                setMatchHistory(mh || []);
+                setShowStatsModal(true);
+                setIsLoading(false);
+              }} className="text-muted" style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Estadísticas">
+                <Trophy size={18} />
+              </button>
               <button onClick={() => { setPasswordMessage(''); setShowChangePasswordModal(true); }} className="text-muted" style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Cambiar Contraseña">
                 <Key size={18} />
               </button>
@@ -473,6 +548,10 @@ export default function GamePage() {
                 <MessageSquare size={20} className="mr-1" /> Sugerir
               </button>
             </div>
+
+            <button onClick={initMultiplayer} className="btn" style={{ background: 'var(--success)', color: '#000', marginTop: '0.5rem', fontWeight: 800 }}>
+              ⚔️ Multijugador Online (PvP)
+            </button>
             
             {user.username === 'intivinu' && (
               <button onClick={() => { setAdminMessage(''); setScreen('admin'); }} className="btn" style={{ background: '#0984e3', color: 'white', marginTop: '0.5rem' }}>
@@ -569,6 +648,58 @@ export default function GamePage() {
                 Cambiar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showStatsModal && user && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="glass-panel flex-col gap-4 animate-slide-up" style={{ width: '100%', maxWidth: '400px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 className="text-accent font-bold text-center flex-center gap-2"><Trophy size={20} /> Estadísticas de {user.username}</h2>
+            
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', padding: '1rem' }}>
+              <h3 className="text-success font-bold mb-2">Modo Solitario</h3>
+              <div className="flex-between text-muted" style={{ fontSize: '0.9rem' }}><span>Partidas Jugadas:</span> <b>{user._count?.sessions || 0}</b></div>
+              <div className="flex-between text-muted" style={{ fontSize: '0.9rem' }}><span>Mejor Puntuación:</span> <b>{user.score}</b></div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', padding: '1rem' }}>
+              <h3 className="text-error font-bold mb-2">Multijugador PvP</h3>
+              <div className="flex-between text-muted" style={{ fontSize: '0.9rem' }}>
+                <span>Rango (Puntos):</span> 
+                <b className="text-accent">
+                  {user.rankScore >= 1200 ? '🥇 Oro' : user.rankScore >= 1100 ? '🥈 Plata' : '🥉 Bronce'} ({user.rankScore})
+                </b>
+              </div>
+              <div className="flex-between text-muted" style={{ fontSize: '0.9rem' }}><span>Victorias:</span> <b className="text-success">{user.pvpWins}</b></div>
+              <div className="flex-between text-muted" style={{ fontSize: '0.9rem' }}><span>Derrotas:</span> <b className="text-error">{user.pvpLosses}</b></div>
+              <div className="flex-between text-muted" style={{ fontSize: '0.9rem' }}>
+                <span>Win Rate:</span> 
+                <b>{user.pvpWins + user.pvpLosses > 0 ? Math.round((user.pvpWins / (user.pvpWins + user.pvpLosses)) * 100) : 0}%</b>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', padding: '1rem' }}>
+              <h3 className="text-accent font-bold mb-2">Últimas 5 Partidas</h3>
+              {matchHistory.length === 0 ? (
+                <p className="text-muted text-center" style={{ fontSize: '0.8rem' }}>No has jugado partidas PvP aún.</p>
+              ) : (
+                <div className="flex-col gap-2">
+                  {matchHistory.map(m => {
+                    const isWin = m.winnerId === user.id;
+                    const opponent = m.player1Id === user.id ? m.player2?.username : m.player1?.username;
+                    return (
+                      <div key={m.id} className="flex-between" style={{ fontSize: '0.85rem', paddingBottom: '0.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span className={isWin ? "text-success" : "text-error"}>{isWin ? 'Victoria' : 'Derrota'}</span>
+                        <span className="text-muted">vs {opponent || '?'}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setShowStatsModal(false)} className="btn btn-primary mt-2">Cerrar</button>
           </div>
         </div>
       )}
@@ -980,6 +1111,135 @@ export default function GamePage() {
               Menú Principal
             </button>
           </div>
+        </div>
+      )}
+
+      {screen === 'multiplayer' && matchState && (
+        <div className="flex-col animate-slide-up gap-4" style={{ width: '100%' }}>
+          
+          {matchState.status === 'waiting' ? (
+            <div className="glass-panel flex-col gap-4 text-center">
+              <div className="magician-emoji animate-float">⏳</div>
+              <h2 className="text-accent">Buscando Oponente...</h2>
+              <p className="text-muted">Esperando a que otro jugador se una a la partida.</p>
+              <button onClick={async () => { await leaveMatch(matchId!); setScreen('menu'); setMultiPolling(false); }} className="btn" style={{ background: 'var(--error)' }}>
+                Cancelar
+              </button>
+            </div>
+          ) : matchState.status === 'playing' ? (
+            <>
+              <div className="hud flex-between" style={{ width: '100%' }}>
+                <div className="flex-col">
+                  <span className="text-accent" style={{ fontWeight: matchState.isMyTurn ? 'bold' : 'normal' }}>{matchState.me?.username} (Tú)</span>
+                </div>
+                <div className="flex-col" style={{ textAlign: 'right' }}>
+                  <span className="text-error" style={{ fontWeight: !matchState.isMyTurn ? 'bold' : 'normal' }}>{matchState.opponent?.username || 'Oponente'}</span>
+                </div>
+              </div>
+
+              <div className="magician-emoji animate-float" style={{ margin: '1rem 0' }}>
+                {matchState.isMyTurn ? '⚔️' : '🛡️'}
+              </div>
+              
+              <div className="word-display">
+                <div className="word-text text-accent">
+                  {matchState.lastWord ? matchState.lastWord.toUpperCase() : '¡COMIENZA!'}
+                </div>
+                <div className="word-hint text-success">
+                  {matchState.isMyTurn 
+                    ? matchState.lastWord ? `Tu turno: empieza con "${getRequiredNextSyllable(matchState.lastWord).toUpperCase()}"` : '¡Escribe cualquier palabra!' 
+                    : 'Turno del oponente...'}
+                </div>
+              </div>
+
+              <div className="timer-track">
+                <div className="timer-bar" style={{ 
+                  width: `${(Math.max(0, 20 - ((now - new Date(matchState.lastMoveAt).getTime()) / 1000)) / 20) * 100}%`,
+                  transition: 'none'
+                }} />
+              </div>
+
+              {matchState.isMyTurn && (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!currentInput.trim() || isLoading) return;
+                  setIsLoading(true);
+                  const res = await playMatchWord(matchId!, currentInput);
+                  if (res.success) {
+                    setCurrentInput('');
+                    setError('');
+                    setMatchState({ ...matchState, isMyTurn: false }); // Optimistic UI update
+                  } else {
+                    setError(res.reason || 'Error inválido');
+                  }
+                  setIsLoading(false);
+                }} className="input-container">
+                  <input
+                    type="text"
+                    value={currentInput}
+                    onChange={(e) => setCurrentInput(e.target.value)}
+                    placeholder="Escribe aquí..."
+                    className="game-input"
+                    disabled={isLoading}
+                    autoComplete="off"
+                    autoFocus
+                  />
+                  {error && <div className="error-badge"><AlertCircle size={16} /> {error}</div>}
+                </form>
+              )}
+
+              <button 
+                type="button"
+                onClick={async () => {
+                  if (isLoading) return;
+                  setIsLoading(true);
+                  const res = await playMatchWord(matchId!, '__ESPEJO__');
+                  if (res.success) {
+                    setError('');
+                    setMatchState({ ...matchState, isMyTurn: false });
+                  } else {
+                    setError(res.reason || 'No puedes usar el espejo ahora');
+                  }
+                  setIsLoading(false);
+                }}
+                disabled={!matchState.isMyTurn || isLoading || !matchState.lastWord || matchState.lastWord.startsWith('ERROR|') || (matchState.wordsPlayed && matchState.wordsPlayed.includes(`__MIRROR_${user?.id}__`))}
+                className={`btn ${matchState.isMyTurn && matchState.lastWord && !matchState.lastWord.startsWith('ERROR|') && !(matchState.wordsPlayed && matchState.wordsPlayed.includes(`__MIRROR_${user?.id}__`)) ? 'btn-mirror active-effect' : ''}`}
+                style={{ 
+                  background: matchState.isMyTurn && matchState.lastWord && !matchState.lastWord.startsWith('ERROR|') && !(matchState.wordsPlayed && matchState.wordsPlayed.includes(`__MIRROR_${user?.id}__`)) ? '' : 'rgba(255,255,255,0.1)',
+                  boxShadow: matchState.isMyTurn && matchState.lastWord && !matchState.lastWord.startsWith('ERROR|') && !(matchState.wordsPlayed && matchState.wordsPlayed.includes(`__MIRROR_${user?.id}__`)) ? '' : 'none',
+                  transform: matchState.isMyTurn && matchState.lastWord && !matchState.lastWord.startsWith('ERROR|') && !(matchState.wordsPlayed && matchState.wordsPlayed.includes(`__MIRROR_${user?.id}__`)) ? '' : 'translateY(0)',
+                  opacity: matchState.isMyTurn && matchState.lastWord && !matchState.lastWord.startsWith('ERROR|') && !(matchState.wordsPlayed && matchState.wordsPlayed.includes(`__MIRROR_${user?.id}__`)) ? 1 : 0.5,
+                  marginTop: '0.5rem'
+                }}
+              >
+                {(matchState.wordsPlayed && matchState.wordsPlayed.includes(`__MIRROR_${user?.id}__`)) ? '🪞 ESPEJO USADO' : '🪞 USAR ESPEJO'}
+              </button>
+
+              <button onClick={async () => { await leaveMatch(matchId!); setScreen('menu'); setMultiPolling(false); }} className="text-muted" style={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', marginTop: '1rem', fontSize: '0.9rem' }}>
+                Abandonar
+              </button>
+            </>
+          ) : (
+            <div className="glass-panel flex-col gap-4 text-center">
+              <div className="magician-emoji">{matchState.winnerId === user?.id ? '🏆' : '💀'}</div>
+              <h2 className={matchState.winnerId === user?.id ? "text-success" : "text-error"}>
+                {matchState.winnerId === user?.id ? '¡VICTORIA!' : 'DERROTA'}
+              </h2>
+              <p className="text-muted">
+                {matchState.status === 'abandoned' ? 'El oponente abandonó la partida.' 
+                 : (matchState.lastWord && matchState.lastWord.startsWith('ERROR|')) ? matchState.lastWord.substring(6)
+                 : 'Tiempo agotado o fin del juego.'}
+                {matchState.winnerId === user?.id ? (
+                  <><br/>Rango: <b className="text-success">+25 puntos</b></>
+                ) : (
+                  <><br/>Rango: <b className="text-error">-15 puntos</b></>
+                )}
+              </p>
+              <button onClick={() => setScreen('menu')} className="btn btn-primary">
+                Volver al Menú
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -56,9 +56,33 @@ export async function getUser() {
 
   const user = await prisma.user.findUnique({ 
     where: { id: session.userId },
-    select: { id: true, username: true, score: true }
+    select: { 
+      id: true, username: true, score: true,
+      pvpWins: true, pvpLosses: true, rankScore: true,
+      _count: { select: { sessions: true } }
+    }
   })
   return user
+}
+
+export async function getMyStats() {
+  const session = await getSession()
+  if (!session) return null
+
+  const recentMatches = await prisma.match.findMany({
+    where: {
+      OR: [{ player1Id: session.userId }, { player2Id: session.userId }],
+      status: { in: ['finished', 'abandoned'] }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+    include: {
+      player1: { select: { username: true } },
+      player2: { select: { username: true } }
+    }
+  })
+
+  return recentMatches
 }
 
 export async function saveHighScore(newScore: number, wordsPlayedArray: string[] = [], difficulty: string = "aprendiz") {
